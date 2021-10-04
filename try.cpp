@@ -80,6 +80,7 @@ class HTTPRequest
         {
             end = request.find(delim, start);
             lines.push_back(request.substr(start, end - start));
+        
         }
 
         std::string request_line = lines[0];
@@ -124,7 +125,10 @@ class HTTPRequest
     void handle_request(){
         std::string response;
         if(this->method == "GET"){
-           this->response = handle_GET();
+            this->response = handle_GET();
+        }
+        else if(this->method == "HEAD"){
+            this->response = handle_HEAD();
         }
         return ;
     }
@@ -145,6 +149,77 @@ class HTTPRequest
             return response_lin + header_lines + blank_line + body ;
         }
 
+        std::string extension = this->uri.substr(this->uri.find('.')+1);
+        std::string response_lin;
+        std::string content_type;
+        std::string content_lenght;
+        std::unordered_map<std::string,std::string> extra_headers;
+        std::string header_lines;
+        std::string blank_line = "\r\n";
+        std::string body;
+
+        if(extension == "html"){
+            size_t bytes_read;
+            while((bytes_read = fread(buffer,1,BUFSIZE,fp))>0){
+                body += buffer;
+            }
+            response_lin = response_line(200);
+            content_type = "text/html";
+            content_lenght = std::to_string(body.length());
+            extra_headers["Content-Type"] = content_type;
+            extra_headers["Content-Length"] = content_lenght;
+            std::string header_lines = response_headers(extra_headers);
+            std::cout << body.length();
+        }
+        else if(extension == "jpg" or extension == "png" or extension == "jpeg"){
+
+            FILE* file_stream = fopen(uri, "rb");
+            std::vector<char> buffer1;
+            size_t file_size;
+
+            if(file_stream != nullptr)
+            {
+                fseek(file_stream, 0, SEEK_END);
+                long file_length = ftell(file_stream);
+                rewind(file_stream);
+                buffer1.resize(file_length);
+                file_size = fread(&buffer1[0], 1, file_length, file_stream);
+                for(int i = 0; i < file_size; i++)
+                {
+                    body += buffer1[i];
+                }
+                std::cout << body.length();
+            }
+
+            response_lin = response_line(200);
+            content_type = "images/jpeg";
+            content_lenght = std::to_string(body.length());
+            extra_headers["Content-Type"] = content_type;
+            extra_headers["Content-Length"] = content_lenght;
+            header_lines = response_headers(extra_headers);
+            std::cout << content_lenght << "\n";
+            std::cout << body.length() << "\n"; 
+
+        }
+        
+        return response_lin + header_lines + blank_line + body;
+    }
+    std::string handle_HEAD(){
+        char buffer[BUFSIZE];
+        const char * uri = this->uri.substr(1).c_str();
+        FILE *fp = fopen(uri,"r");
+        if(fp == NULL){
+            std::string response_lin = response_line(404);
+            // std::string body = "404 Not Found\r\n";
+            std::unordered_map<std::string,std::string> extra_headers;
+            // extra_headers["Content-Length"] = std::to_string(body.length()); 
+            std::string header_lines = response_headers(extra_headers);
+            // std::string blank_line = "\r\n";
+            
+            
+            return response_lin + header_lines ;
+        }
+
         std::string body = "";
         size_t bytes_read;
         while((bytes_read = fread(buffer,1,BUFSIZE,fp))>0){
@@ -157,10 +232,10 @@ class HTTPRequest
         extra_headers["Content-Type"] = content_type;
         extra_headers["Content-Length"] = content_lenght;
         std::string header_lines = response_headers(extra_headers);
-        std::string blank_line = "\r\n";
-        std::cout << body << "\n";
+        // std::string blank_line = "\r\n";
+        // std::cout << body << "\n";
 
-        return response_lin + header_lines + blank_line + body;
+        return response_lin + header_lines;
     }
 
 };
@@ -220,8 +295,11 @@ void* handle_connection(void* p_client_socket){
     }
     buffer[msgsize-1] = 0;
     std::cout << buffer;
+
     HTTPRequest* req = new HTTPRequest(buffer);
     std::string resp = req->response;
+
+
     // std::cout << resp;
     // const char * uri = req->uri.substr(1).c_str();
 
@@ -332,5 +410,3 @@ int main(int argc, char const *argv[])
     }
     return 0;
 }
-
-
