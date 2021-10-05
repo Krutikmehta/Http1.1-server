@@ -1,4 +1,5 @@
 
+
 #include <stdio.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -8,17 +9,20 @@
 #include <fstream>
 #include <bits/stdc++.h>
 #include <iostream>
-#include <sys/types.h>
+#include<sys/types.h>
+#include<sys/stat.h>
 #include <fcntl.h> 
 #include <pthread.h>
 #include <time.h>
+#include <sys/epoll.h>
 // using namespace std;
 
 #define PORT 8989
 #define BUFSIZE 4096
-#define THREAD_POOL_SIZE 100
+#define THREAD_POOL_SIZE 10000
 #define PAGE_SIZE 4096
 #define STK_SIZE (10 * PAGE_SIZE)
+#define MAX_EVENTS 100000
 
 pthread_t thread_pool[THREAD_POOL_SIZE];
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -41,6 +45,14 @@ class HTTPRequest
 
     HTTPRequest(char* data){
         struct tm * gmtime (const time_t * timer);
+        // char outstr[200];
+        // time_t t;
+        // struct tm *tmp;
+        // const char* fmt = "%a, %d %b %Y %T %z";
+
+        // t = time(NULL);
+        // tmp = gmtime(&t);
+        // strftime(outstr, sizeof(outstr), fmt, tmp);
 
         std::time_t now= std::time(0);
         std::tm* now_tm= std::gmtime(&now);
@@ -56,7 +68,7 @@ class HTTPRequest
         status_codes = {
             {200, "OK"},
             {404, "Not Found"},
-            {501, "Not Implemented"}   //   /////////////////////////////////////////////////////////
+            {501, "Not Implemented"}
         };
         parse(data);
         handle_request();
@@ -69,18 +81,11 @@ class HTTPRequest
 
         std::string delim = "\r\n";
         std::vector<std::string> lines;
-        std::string conn_type;
+
         while((start = request.find_first_not_of(delim, end)) != std::string::npos)
         {
             end = request.find(delim, start);
-            std::string header = request.substr(start, end - start);
-            
-            if(header.find("Connection")!=std::string::npos)
-                conn_type = header.substr(header.find(":") + 2);  
-            
-            else conn_type = "close";
-            this->headers.insert({"Connection",conn_type});
-            lines.push_back(header);
+            lines.push_back(request.substr(start, end - start));
         
         }
 
@@ -126,7 +131,7 @@ class HTTPRequest
     void handle_request(){
         std::string response;
         if(this->method == "GET"){
-            this->response = handle_HEAD();
+            this->response = handle_GET();
         }
         else if(this->method == "HEAD"){
             this->response = handle_HEAD();
@@ -145,9 +150,8 @@ class HTTPRequest
             extra_headers["Content-Length"] = std::to_string(body.length()); 
             std::string header_lines = response_headers(extra_headers);
             std::string blank_line = "\r\n";
-            fclose(fp);
-            fp = NULL;
             
+            fclose(fp);
             return response_lin + header_lines + blank_line + body ;
         }
 
@@ -170,10 +174,9 @@ class HTTPRequest
             content_lenght = std::to_string(body.length());
             extra_headers["Content-Type"] = content_type;
             extra_headers["Content-Length"] = content_lenght;
-            std::string header_lines = response_headers(extra_headers);
-            std::cout << body.length();
+            header_lines = response_headers(extra_headers);
             fclose(fp);
-            fp = NULL;
+            std::cout << "in get" << "\n";
         }
         else if(extension == "jpg" or extension == "png" or extension == "jpeg"){
 
@@ -192,38 +195,54 @@ class HTTPRequest
                 {
                     body += buffer1[i];
                 }
+                // std::cout << body.length();
             }
-
+            fclose(file_stream);
             response_lin = response_line(200);
             content_type = "images/jpeg";
             content_lenght = std::to_string(body.length());
             extra_headers["Content-Type"] = content_type;
             extra_headers["Content-Length"] = content_lenght;
             header_lines = response_headers(extra_headers);
-            std::cout << content_lenght << "\n";
-            std::cout << body.length() << "\n"; 
-            fclose(file_stream);
-            file_stream = NULL;
+            // std::cout << content_lenght << "\n";
+            // std::cout << body.length() << "\n"; 
 
         }
         
         return response_lin + header_lines + blank_line + body;
     }
     std::string handle_HEAD(){
-        char buffer[BUFSIZE]; 
-        
-        std::ifstream in(this->uri.substr(1), std::ifstream::ate | std::ifstream::binary);
-        
+        char buffer[BUFSIZE];
+        const char * uri = this->uri.substr(1).c_str();
+        FILE *fp = fopen(uri,"r");
+        if(fp == NULL){
+            std::string response_lin = response_line(404);
+            // std::string body = "404 Not Found\r\n";
+            std::unordered_map<std::string,std::string> extra_headers;
+            // extra_headers["Content-Length"] = std::to_string(body.length()); 
+            std::string header_lines = response_headers(extra_headers);
+            // std::string blank_line = "\r\n";
+            
+            
+            return response_lin + header_lines ;
+        }
+        fclose(fp);
 
+        std::string body = "";
+        size_t bytes_read;
+        while((bytes_read = fread(buffer,1,BUFSIZE,fp))>0){
+            body += buffer;
+        }
         std::string response_lin = response_line(200);
         std::string content_type = "text/html";
-        std::string content_lenght = std::to_string(in.tellg());
+        std::string content_lenght = std::to_string(body.length());
         std::unordered_map<std::string,std::string> extra_headers;
         extra_headers["Content-Type"] = content_type;
         extra_headers["Content-Length"] = content_lenght;
         std::string header_lines = response_headers(extra_headers);
+        // std::string blank_line = "\r\n";
+        // std::cout << body << "\n";
 
-        // std::cout << response_lin + header_lines;
         return response_lin + header_lines;
     }
 
@@ -231,123 +250,99 @@ class HTTPRequest
 
 
 
-struct hellas{
-    hellas* next;
-    int *client_socket;
-};
+// struct hellas{
+//     hellas* next;
+//     int *client_socket;
+// };
 
-typedef struct hellas node_t;
+// typedef struct hellas node_t;
 
-node_t* head = NULL;
-node_t* tail = NULL;
+// node_t* head = NULL;
+// node_t* tail = NULL;
 
 
-void enqueue(int *client_socket){
-    node_t *newnode = new node_t();
-    newnode->client_socket = client_socket;
-    newnode->next = NULL;
-    if(tail == NULL){
-        head = newnode;
-    }else{
-        tail->next = newnode;
-    }
-    tail = newnode;
-}
+// void enqueue(int *client_socket){
+//     node_t *newnode = new node_t();
+//     newnode->client_socket = client_socket;
+//     newnode->next = NULL;
+//     if(tail == NULL){
+//         head = newnode;
+//     }else{
+//         tail->next = newnode;
+//     }
+//     tail = newnode;
+// }
 
-int* dequeue(){
-    if(head == NULL) return NULL;
-    else{
-        int* result = head->client_socket;
-        node_t *temp = head;
-        head = head->next;
-        if(head == NULL) tail = NULL;
-        free(temp);
-        return result;
-    }
-}
+// int* dequeue(){
+//     if(head == NULL) return NULL;
+//     else{
+//         int* result = head->client_socket;
+//         node_t *temp = head;
+//         head = head->next;
+//         if(head == NULL) tail = NULL;
+//         free(temp);
+//         return result;
+//     }
+// }
 
 void* handle_connection(void* p_client_socket){
-    int client_socket = *((int*)p_client_socket);
-
-    fd_set set;
-    struct timeval timeout;
-    int rv;
-    int filedesc = client_socket;
     
-    while(1){
-        FD_ZERO(&set); /* clear the set */
-        FD_SET(filedesc, &set); /* add our file descriptor to the set */
-
-        char buffer[BUFSIZE];
-        timeout.tv_sec = 5;
-        timeout.tv_usec = 0;
-        
-        size_t bytes_read;
-        int msgsize = 0;
-        
-        rv = select(filedesc + 1, &set, NULL, NULL, &timeout);
-        if(rv == -1)
-            perror("select"); /* an error accured */
-        else if(rv == 0){
-            close(client_socket);
-            break;
-        }
-        else{
-            while((bytes_read = read(client_socket,buffer+msgsize,sizeof(buffer)-msgsize-1)) > 0){
-                msgsize += bytes_read;
-                break;
-                // if(msgsize > BUFSIZE-1 || buffer[msgsize-1] == "\n") break;
-            }
-            buffer[msgsize-1] = 0;
-
-            HTTPRequest* req = new HTTPRequest(buffer);
-            std::string resp = req->response;
-
-
-            write(client_socket,resp.c_str(),resp.length());
-
-            if(req->headers["Connection"] == "close") {
-                close(client_socket);
-                break;
-            }
-            else continue;
-        }
+    int client_socket = *((int*)p_client_socket);
+    char buffer[BUFSIZE];
+    
+    size_t bytes_read;
+    int msgsize = 0;
+    // char buffer1[30000] = {0};
+    // long valread = read( client_socket , buffer1, 30000);
+    // printf("%s\n",buffer1 );
+    std::cout << " herher" << "\n";
+    while((bytes_read = read(client_socket,buffer+msgsize,sizeof(buffer)-msgsize-1)) > 0){
+        std::cout << " in while" << "\n";
+        msgsize += bytes_read;
+        break;
+        // if(msgsize > BUFSIZE-1 || buffer[msgsize-1] == "\n") break;
     }
+    buffer[msgsize-1] = 0;
+    std::cout << "in handle" << "\n";
+
+    HTTPRequest* req = new HTTPRequest(buffer);
+    std::string resp = req->response;
+  
+    write(client_socket,resp.c_str(),resp.length());
+    
+    // close(client_socket);
+    std::cout << resp << "\n";
+    std::cout << "close conn";
     return NULL;
 }
-int i=0;
-void* thread_fun(void* arg){ 
-    while(1){       
-            int *p_client;
-            pthread_mutex_lock(&mutex);
-            if((p_client = dequeue()) == NULL){
-                pthread_cond_wait(&cond_var,&mutex);
-                p_client = dequeue();
-            }
-            pthread_mutex_unlock(&mutex);
-            if(p_client != NULL){
-                handle_connection(p_client);
-            }
+// int i=0;
+// void* thread_fun(void* arg){ 
+//     while(1){       
+//             int *p_client;
+//             pthread_mutex_lock(&mutex);
+//             if((p_client = dequeue()) == NULL){
+//                 pthread_cond_wait(&cond_var,&mutex);
+//                 p_client = dequeue();
+//             }
+//             pthread_mutex_unlock(&mutex);
+//             if(p_client != NULL){
+//                 handle_connection(p_client);
+//             }
 
-    }
-}
+//     }
+// }
 
 int main(int argc, char const *argv[])
 {
-    void *stack;
-    posix_memalign(&stack,PAGE_SIZE,STK_SIZE);
+    
     int server_fd, new_socket; long valread;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
-    size_t stacksize;
-    pthread_attr_init(&attr);
-    
-    pthread_attr_setstack(&attr,&stack,STK_SIZE);
-    pthread_attr_getstacksize(&attr, &stacksize);
-    printf("%zd\n", stacksize);
-    for(int i=0;i<THREAD_POOL_SIZE;i++){
-        pthread_create(&thread_pool[i],NULL,thread_fun,NULL);
-    }
+
+
+    // for(int i=0;i<THREAD_POOL_SIZE;i++){
+    //     pthread_create(&thread_pool[i],NULL,thread_fun,NULL);
+    // }
     
     
     // Creating socket file descriptor
@@ -376,24 +371,73 @@ int main(int argc, char const *argv[])
         perror("In listen");
         exit(EXIT_FAILURE);
     }
-    
+
+    int efd;
+    if((efd = epoll_create1(0)) == -1){
+        std::cout << "epoll create error" ;
+    }
+
+    struct epoll_event ev, ep_event[MAX_EVENTS];
+
+    ev.events = EPOLLIN;
+    ev.data.fd = server_fd;
+    if(epoll_ctl(efd,EPOLL_CTL_ADD,server_fd,&ev) == -1){
+        std::cout<< "epoll ctl error";
+    }
+
+    int nfds = 0; 
+
 
     while(1)
     {
-        printf("\n+++++++ Waiting for new connection ++++++++\n\n");
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
-        {
-            perror("In accept");
-            exit(EXIT_FAILURE);
+        if((nfds = epoll_wait(efd,ep_event,MAX_EVENTS,-1))==-1){
+            std::cout << "epoll wait error";
         }
+        for(int i=0;i<nfds;i++){
+            std::cout << i << "\n";
+            if((ep_event[i].events & EPOLLIN) == EPOLLIN){
+                std::cout << " new event" << "\n";
+                if(ep_event[i].data.fd == server_fd){
+                    std::cout << " new conn" << "\n";
+                    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0){
+                            perror("In accept");
+                            exit(EXIT_FAILURE);
+                    }
+                    ev.events = EPOLLIN;
+                    ev.data.fd = new_socket;
+                    if(epoll_ctl(efd,EPOLL_CTL_ADD,new_socket,&ev)==-1){
+                        std::cout << "epoll ctl error";
+                    }
+                
+                }
+                else{
+                    std::cout << " handle" << "\n";
+                    int *p_client = (int *)malloc(sizeof(int));
+                    *p_client = ep_event[i].data.fd;
+                    
+                    handle_connection(p_client);
+                    if(epoll_ctl(efd,EPOLL_CTL_DEL,ep_event[i].data.fd,&ev) ==-1){
+                        std::cout<<"epoll del error";
+                    }
+                    close(ep_event[i].data.fd);
+                    std::cout << " close" << "\n";
+                }
+          }
+        }
+        // printf("\n+++++++ Waiting for new connection ++++++++\n\n");
+        // if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
+        // {
+        //     perror("In accept");
+        //     exit(EXIT_FAILURE);
+        // }
 
-        int *p_client = (int *)malloc(sizeof(int));
-        *p_client = new_socket;
+        // int *p_client = (int *)malloc(sizeof(int));
+        // *p_client = new_socket;
 
-        pthread_mutex_lock(&mutex);
-        enqueue(p_client);
-        pthread_cond_signal(&cond_var);
-        pthread_mutex_unlock(&mutex); 
+        // pthread_mutex_lock(&mutex);
+        // enqueue(p_client);
+        // pthread_cond_signal(&cond_var);
+        // pthread_mutex_unlock(&mutex); 
         
         
     }
