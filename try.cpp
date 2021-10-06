@@ -12,6 +12,9 @@
 #include <fcntl.h> 
 #include <pthread.h>
 #include <time.h>
+#include <filesystem>
+#include <sys/stat.h>
+
 // using namespace std;
 
 #define PORT 8989
@@ -55,6 +58,7 @@ class HTTPRequest
         headers.insert({"Date",std::string(buf) +" GMT"});
         status_codes = {
             {200, "OK"},
+            {304, "Not Modified"},
             {404, "Not Found"},
             {501, "Not Implemented"}   //   /////////////////////////////////////////////////////////
         };
@@ -79,7 +83,11 @@ class HTTPRequest
                 conn_type = header.substr(header.find(":") + 2);  
             
             else conn_type = "close";
-            this->headers.insert({"Connection",conn_type});
+
+            if(header.find("If-Modified-Since")!=std::string::npos){
+                conn_type = header.substr(header.find(":") + 2);  
+                this->headers.insert({"If-Modified-Since",conn_type});
+            }
             lines.push_back(header);
         
         }
@@ -124,9 +132,36 @@ class HTTPRequest
     }
 
     void handle_request(){
-        std::string response;
+        std::string response;  
+
+        if(this->headers.find("If-Modified-Since")!=this->headers.end()){
+            tm timeptr, client,server;
+            std::string if_modified_client = this->headers["If-Modified-Since"];
+            strptime(if_modified_client.c_str(),"%a, %d %b %Y %T",&client);
+            time_t client_t = mktime(&client);
+
+
+            struct stat result;
+            stat(this->uri.substr(1).c_str(), &result);
+        
+            char buf[100];
+            time_t mod_time = result.st_mtime;
+            
+            gmtime_r(&mod_time, &timeptr);
+            strftime(buf,sizeof(buf), "%a, %d %b %Y %T", &timeptr);
+            strptime(buf,"%a, %d %b %Y %T",&server);
+            time_t server_t = mktime(&server);
+
+            if(server_t == client_t) {
+                std::string response_lin = response_line(304);
+                std::string header_lines = "Date: " + this->headers["Date"] + "\r\n"; 
+                this->response = response_lin + header_lines;
+                return ;
+            }
+        }
+
         if(this->method == "GET"){
-            this->response = handle_HEAD();
+            this->response = handle_GET();
         }
         else if(this->method == "HEAD"){
             this->response = handle_HEAD();
@@ -138,6 +173,8 @@ class HTTPRequest
         char buffer[BUFSIZE];
         const char * uri = this->uri.substr(1).c_str();
         FILE *fp = fopen(uri,"r");
+
+
         if(fp == NULL){
             std::string response_lin = response_line(404);
             std::string body = "404 Not Found\r\n";
@@ -160,6 +197,8 @@ class HTTPRequest
         std::string blank_line = "\r\n";
         std::string body;
 
+
+
         if(extension == "html"){
             size_t bytes_read;
             while((bytes_read = fread(buffer,1,BUFSIZE,fp))>0){
@@ -170,8 +209,7 @@ class HTTPRequest
             content_lenght = std::to_string(body.length());
             extra_headers["Content-Type"] = content_type;
             extra_headers["Content-Length"] = content_lenght;
-            std::string header_lines = response_headers(extra_headers);
-            std::cout << body.length();
+            header_lines = response_headers(extra_headers);
             fclose(fp);
             fp = NULL;
         }
@@ -298,12 +336,13 @@ void* handle_connection(void* p_client_socket){
                 break;
                 // if(msgsize > BUFSIZE-1 || buffer[msgsize-1] == "\n") break;
             }
-            buffer[msgsize-1] = 0;
 
+            buffer[msgsize-1] = 0;
+        
             HTTPRequest* req = new HTTPRequest(buffer);
             std::string resp = req->response;
-
-
+            std::cout << buffer << "\n";
+            std::cout << resp << "\n";
             write(client_socket,resp.c_str(),resp.length());
 
             if(req->headers["Connection"] == "close") {
