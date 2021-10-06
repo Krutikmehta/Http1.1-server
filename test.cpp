@@ -24,9 +24,10 @@ int main() {
 
         time_t server_t = mktime(&server);
         
-        std::string buf1 = "Fri, 31 Dec 1999 23:59:59";
+        std::string buf1 = "Tue, 5 Oct 2021 23:59:59";
         strptime(buf1.c_str(),"%a, %d %b %Y %T",&client);
         time_t client_t = mktime(&client);
+
 
 
         std::cout <<buf1 << "\n";
