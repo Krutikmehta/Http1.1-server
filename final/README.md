@@ -62,9 +62,8 @@ specification:
 - 1,000,000 requests
 - 20,000 concurrent requests    :this was the maximum limit of the tool which i was using, although it can be increased till MAX_THREADS
 ---
-**NOTE**
-
 ##### an empty HTML file was used for benchmarking.
 ---
 ![HTTP SERVER RESULTS](100k_threads.png "Results for the above specifications")
-results can be found in 100K_threads.png
+
+### Results can be found in 100K_threads.png.
