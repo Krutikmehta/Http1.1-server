@@ -64,7 +64,7 @@ specification:
 ---
 **NOTE**
 
-#### an empty HTML file was used for benchmarking.
+##### an empty HTML file was used for benchmarking.
 ---
 ![HTTP SERVER RESULTS](100k_threads.png "Results for the above specifications")
 results can be found in 100K_threads.png
