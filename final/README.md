@@ -62,7 +62,7 @@ specification:
 - 1,000,000 requests
 - 20,000 concurrent requests    :this was the maximum limit of the tool which i was using, although it can be increased till MAX_THREADS
 ---
-##### an empty HTML file is sent via HTTP/1.1(i.e only status line and headers) for benchmarking.
+##### An empty HTML file is sent via HTTP/1.1(i.e only status line and headers) for benchmarking.
 ---
 ![HTTP SERVER RESULTS](100k_threads.png "Results for the above specifications")
 
