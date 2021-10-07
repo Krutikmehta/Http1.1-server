@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <arpa/inet.h>
 
+
 // using namespace std;
 
 #define PORT 8989
@@ -203,9 +204,7 @@ class HTTPRequest
             body = "404 Not Found\r\n";
             extra_headers["Content-Length"] = std::to_string(body.length()); 
             header_lines = response_headers(extra_headers);
-            fclose(fp);
             fp = NULL;
-            
             return response_line+ header_lines + blank_line + body ;
         }
 
@@ -232,28 +231,27 @@ class HTTPRequest
             FILE* file_stream = fopen(uri, "rb");
             std::vector<char> buffer1;
             size_t file_size;
-
-            if(file_stream != nullptr)
+            
+            fseek(file_stream, 0, SEEK_END);
+            long file_length = ftell(file_stream);
+            rewind(file_stream);
+            buffer1.resize(file_length);
+            file_size = fread(&buffer1[0], 1, file_length, file_stream);
+            for(int i = 0; i < file_size; i++)
             {
-                fseek(file_stream, 0, SEEK_END);
-                long file_length = ftell(file_stream);
-                rewind(file_stream);
-                buffer1.resize(file_length);
-                file_size = fread(&buffer1[0], 1, file_length, file_stream);
-                for(int i = 0; i < file_size; i++)
-                {
-                    body += buffer1[i];
-                }
+                body += buffer1[i];
             }
-
             response_line= status_line(200);
-            content_type = "images/jpeg";
+            content_type = (extension == "png" ? "image/png" : "image/jpeg");
+            std::cout << content_type;
             content_lenght = std::to_string(body.length());
             extra_headers["Content-Type"] = content_type;
             extra_headers["Content-Length"] = content_lenght;
             header_lines = response_headers(extra_headers);
             fclose(file_stream);
             file_stream = NULL;
+            
+
         }
         
         return response_line+ header_lines + blank_line + body;
@@ -380,7 +378,7 @@ void* handle_connection(void* p_client_socket){
                 }
                 return NULL;
             }
-            else
+            else    
                 continue;
         }
     }
