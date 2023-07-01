@@ -1,6 +1,6 @@
-HTTP/1.1 server
+# HTTP/1.1 server using Linux Apis
 
-Features -
+## Features -
 
 1. Concurrent connetions.
 
@@ -45,7 +45,10 @@ httpserver class: the HTTP/1.1 compliant server with features as described above
 queue header file: contains the queue data structure
 constants header file: contains the SERVER constanst.
 
-Running -
+
+## Running -
+```bash
+
 g++ -pthread -o server server.cpp
 ./server
 
@@ -54,8 +57,8 @@ go to - http://localhost:8989/index.html
 
 To get an image -
 go to - http://localhost:8989/image.jpg
-
-Results -
+```
+## Results -
 specification:
 
 - 100,000 threads : can be changed from constants.h
@@ -67,7 +70,6 @@ specification:
 ##### An empty HTML file is sent via HTTP/1.1(i.e only status line and headers) for benchmarking.
 
 ---
+<img src="https://github.com/Krutikmehta/Http1.1-server/blob/master/http-server/100k_threads.png" height=900  width=900/>
 
-![HTTP SERVER RESULTS](final/100k_threads.png "Results for the above specifications")
-
-### Results can be found in 100K_threads.png.
+### Results can be found in http_server/100K_threads.png.
